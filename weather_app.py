@@ -38,17 +38,18 @@ def show_city_on_map(lat, lon, city_name):
     except Exception as e:
         st.sidebar.error(f"❌ Error displaying map: {e}")
 
-# 🌦️ Get Weather Info with Debug
+# 🌦️ Get Weather Info
 def get_weather(city, api_key):
     url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
     try:
         response = requests.get(url)
         data = response.json()
-        st.sidebar.write("🔍 Weather API response:", data)  # 🔎 Debug line
+        st.sidebar.write("🔍 Weather API response:", data)  # Debug
 
         if data.get("cod") != 200:
-            return None
-        return {
+            return None, None
+
+        weather = {
             "temperature": data["main"]["temp"],
             "feels_like": data["main"]["feels_like"],
             "description": data["weather"][0]["description"],
@@ -57,38 +58,27 @@ def get_weather(city, api_key):
             "sunrise": datetime.fromtimestamp(data["sys"]["sunrise"]).strftime('%H:%M:%S'),
             "sunset": datetime.fromtimestamp(data["sys"]["sunset"]).strftime('%H:%M:%S')
         }
+
+        # Local time from timezone offset
+        if "dt" in data and "timezone" in data:
+            utc_time = data["dt"]
+            offset = data["timezone"]
+            local_time = datetime.utcfromtimestamp(utc_time + offset).strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            local_time = "Time data unavailable"
+
+        return weather, local_time
+
     except Exception as e:
         st.sidebar.error(f"❌ Error getting weather: {e}")
-        return None
-
-# 🕒 Get Local Time via OpenWeather One Call
-def get_local_time_from_weather(city, api_key):
-    try:
-        geo_url = f"https://nominatim.openstreetmap.org/search?city={city}&format=json"
-        geo_response = requests.get(geo_url, headers={"User-Agent": "streamlit-city-app"}).json()
-        if not geo_response:
-            return "Location not found"
-        lat = geo_response[0]["lat"]
-        lon = geo_response[0]["lon"]
-        weather_url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&exclude=minutely,hourly,daily,alerts&appid={api_key}"
-        weather_response = requests.get(weather_url).json()
-        st.sidebar.write("🕒 Timezone API response:", weather_response)  # ⏱️ Debug line
-        if "timezone_offset" not in weather_response or "current" not in weather_response:
-            return "Time data unavailable"
-        utc_time = weather_response["current"]["dt"]
-        offset = weather_response["timezone_offset"]
-        local_timestamp = utc_time + offset
-        return datetime.utcfromtimestamp(local_timestamp).strftime('%Y-%m-%d %H:%M:%S')
-    except Exception as e:
-        st.sidebar.error(f"❌ Error getting local time: {e}")
-        return "Error fetching time"
+        return None, None
 
 # 🌇 Streamlit UI
 st.set_page_config(page_title="City Validator", layout="wide")
 st.title("City Validator 🌍")
 
 city_name = st.text_input("Enter a city name")
-API_KEY = "d76a7efa2549e110c6d3f88e0cc1fa02"  # ✅ Your working API key
+API_KEY = "d76a7efa2549e110c6d3f88e0cc1fa02"  # Replace with your key
 
 if city_name:
     if validate_city_osm(city_name):
@@ -102,11 +92,9 @@ if city_name:
                 flag_url = f"https://flagsapi.com/{country_code}/flat/64.png"
                 st.image(flag_url, caption=f"{country} Flag", width=64)
 
-            local_time = get_local_time_from_weather(city_name, API_KEY)
-            st.info(f"🕒 Local Time: {local_time}")
-
-            weather = get_weather(city_name, API_KEY)
+            weather, local_time = get_weather(city_name, API_KEY)
             if weather:
+                st.info(f"🕒 Local Time: {local_time}")
                 st.subheader("🌤️ Current Weather")
                 st.write(f"**Temperature:** {weather['temperature']}°C (Feels like {weather['feels_like']}°C)")
                 st.write(f"**Condition:** {weather['description'].title()}")
